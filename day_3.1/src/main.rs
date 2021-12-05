@@ -91,7 +91,7 @@ impl<const N: usize> FromStr for DiagnosticLine<N> {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let elts = s.trim().chars().map(|c| {
-            if c == '1' {
+            if c == '0' {
                 DiagnosticBit::Zero
             } else {
                 DiagnosticBit::One
