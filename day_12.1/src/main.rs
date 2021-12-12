@@ -6,7 +6,6 @@ use std::{
 };
 
 struct Node {
-    name: String,
     is_small: bool,
     children: Vec<usize>,
     is_end: bool,
@@ -18,7 +17,6 @@ fn insert_node(
     node_dict: &mut BTreeMap<String, usize>,
 ) -> usize {
     let n = Node {
-        name: name.to_string(),
         is_small: name.chars().next().unwrap().is_lowercase(),
         children: Vec::<usize>::new(),
         is_end: false,
