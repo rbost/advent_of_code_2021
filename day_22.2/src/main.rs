@@ -1,8 +1,10 @@
 use std::{
+    collections::btree_map::Iter,
     env,
     fs::File,
     io::{BufRead, BufReader},
-    ops::RangeInclusive,
+    iter,
+    ops::{Deref, RangeInclusive},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,78 +38,88 @@ impl Area {
             && is_contained_by(&self.z_range, &other.z_range)
     }
 
-    fn cut_x_plane(&self, cut: isize, cut_min: bool) -> Vec<Area> {
+    fn cut_x_plane(&self, cut: isize, cut_min: bool) -> impl Iterator<Item = Area> {
         let new_x_ranges = cut_interval(&self.x_range, cut, cut_min);
-        new_x_ranges
-            .into_iter()
-            .map(|x_range| Area {
-                x_range,
-                y_range: self.y_range.clone(),
-                z_range: self.z_range.clone(),
-                value: self.value,
-            })
-            .collect()
+        let y_range = self.y_range.clone();
+        let z_range = self.z_range.clone();
+        let value = self.value;
+        new_x_ranges.into_iter().map(move |x_range| Area {
+            x_range,
+            y_range: y_range.clone(),
+            z_range: z_range.clone(),
+            value,
+        })
     }
-    fn cut_y_plane(&self, cut: isize, cut_min: bool) -> Vec<Area> {
+    fn cut_y_plane(&self, cut: isize, cut_min: bool) -> impl Iterator<Item = Area> {
         let new_y_ranges = cut_interval(&self.y_range, cut, cut_min);
-        new_y_ranges
-            .into_iter()
-            .map(|y_range| Area {
-                x_range: self.x_range.clone(),
-                y_range,
-                z_range: self.z_range.clone(),
-                value: self.value,
-            })
-            .collect()
+        let x_range = self.x_range.clone();
+        let z_range = self.z_range.clone();
+        let value = self.value;
+        new_y_ranges.into_iter().map(move |y_range| Area {
+            x_range: x_range.clone(),
+            y_range,
+            z_range: z_range.clone(),
+            value,
+        })
     }
-    fn cut_z_plane(&self, cut: isize, cut_min: bool) -> Vec<Area> {
+    fn cut_z_plane(&self, cut: isize, cut_min: bool) -> impl Iterator<Item = Area> {
         let new_z_ranges = cut_interval(&self.z_range, cut, cut_min);
-        new_z_ranges
-            .into_iter()
-            .map(|z_range| Area {
-                x_range: self.x_range.clone(),
-                y_range: self.y_range.clone(),
-                z_range,
-                value: self.value,
-            })
-            .collect()
+        let x_range = self.x_range.clone();
+        let y_range = self.y_range.clone();
+        let value = self.value;
+        new_z_ranges.into_iter().map(move |z_range| Area {
+            x_range: x_range.clone(),
+            y_range: y_range.clone(),
+            z_range,
+            value,
+        })
     }
 
-    fn cut_area(&self, cut: &Area) -> Vec<Area> {
+    fn cut_area(&self, cut: &Area) -> Box<dyn Iterator<Item = Area>> {
         if self.intersects(cut) {
-            let new_areas = self.cut_x_plane(*cut.x_range.start(), false);
+            let x_start = *cut.x_range.start();
+            let x_end = *cut.x_range.end();
+            let y_start = *cut.y_range.start();
+            let y_end = *cut.y_range.end();
+            let z_start = *cut.z_range.start();
+            let z_end = *cut.z_range.end();
+            let new_areas = self.cut_x_plane(x_start, false);
             let new_areas = new_areas
                 .into_iter()
-                .flat_map(|a| a.cut_x_plane(*cut.x_range.end(), true));
+                .flat_map(move |a| a.cut_x_plane(x_end, true));
             let new_areas = new_areas
                 .into_iter()
-                .flat_map(|a| a.cut_y_plane(*cut.y_range.start(), false));
+                .flat_map(move |a| a.cut_y_plane(y_start, false));
             let new_areas = new_areas
                 .into_iter()
-                .flat_map(|a| a.cut_y_plane(*cut.y_range.end(), true));
+                .flat_map(move |a| a.cut_y_plane(y_end, true));
             let new_areas = new_areas
                 .into_iter()
-                .flat_map(|a| a.cut_z_plane(*cut.z_range.start(), false));
-            new_areas
-                .into_iter()
-                .flat_map(|a| a.cut_z_plane(*cut.z_range.end(), true))
-                .collect()
+                .flat_map(move |a| a.cut_z_plane(z_start, false));
+            Box::new(
+                new_areas
+                    .into_iter()
+                    .flat_map(move |a| a.cut_z_plane(z_end, true)),
+            )
         } else {
-            vec![self.clone()]
+            Box::new(iter::once(self.clone()))
         }
     }
 
-    fn substract_area(self, cut: &Area) -> Vec<Area> {
-        let new_areas = self.cut_area(cut);
-        // let new_areas_size = new_areas.len();
+    fn substract_area(self, cut: Area) -> impl Iterator<Item = Area> {
+        let new_areas = self.cut_area(&cut);
 
-        let res: Vec<_> = new_areas
-            .iter()
-            .filter(|a| !a.is_contained_by(cut))
-            .cloned()
-            .collect();
+        new_areas.filter(move |a| !a.is_contained_by(&cut))
+        //         .cloned()
+        // let mut res = Vec::<Area>::with_capacity(new_areas.len());
+        // res.extend(
+        //     new_areas
+        //         .iter()
+        //         .filter(|a| !a.is_contained_by(cut))
+        //         .cloned(),
+        // );
 
-        res
+        // res
     }
 }
 
@@ -211,7 +223,7 @@ fn main() {
     for order in orders {
         let new_on = on_areas
             .into_iter()
-            .flat_map(|a| a.substract_area(&order))
+            .flat_map(|a| a.substract_area(order.clone()))
             .collect();
 
         on_areas = new_on;
